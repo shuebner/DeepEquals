@@ -4,6 +4,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Reflection;
+using static System.Linq.Expressions.Expression;
 
 namespace SvSoft.DeepEquals
 {
@@ -14,10 +15,10 @@ namespace SvSoft.DeepEquals
         private static readonly Type[] ValueTypeEquivalents = { typeof(string) };
 
         public static Func<T, T, bool> FromFields<T>() =>
-            ForMembers<T, FieldInfo>(typeof(T).GetFields(), fieldInfo => fieldInfo.FieldType, Expression.Field);
+            ForMembers<T, FieldInfo>(typeof(T).GetFields(), fieldInfo => fieldInfo.FieldType, Field);
 
         public static Func<T, T, bool> FromProperties<T>() =>
-            ForMembers<T, PropertyInfo>(typeof(T).GetProperties(), propertyInfo => propertyInfo.PropertyType, Expression.Property);
+            ForMembers<T, PropertyInfo>(typeof(T).GetProperties(), propertyInfo => propertyInfo.PropertyType, Property);
 
         private static Func<T, T, bool> ForMembers<T, TMember>(
             IEnumerable<TMember> memberInfos,
@@ -25,13 +26,13 @@ namespace SvSoft.DeepEquals
             GetMemberAccessor getMemberAccessor)
             where TMember : MemberInfo
         {
-            ParameterExpression oneParam = Expression.Parameter(typeof(T), "one");
-            ParameterExpression otherParam = Expression.Parameter(typeof(T), "other");
+            ParameterExpression oneParam = Parameter(typeof(T), "one");
+            ParameterExpression otherParam = Parameter(typeof(T), "other");
 
             if (!memberInfos.Any())
             {
-                return Expression.Lambda<Func<T, T, bool>>(
-                    Expression.Constant(true),
+                return Lambda<Func<T, T, bool>>(
+                    Constant(true),
                     oneParam,
                     otherParam)
                     .Compile();
@@ -39,9 +40,9 @@ namespace SvSoft.DeepEquals
 
             var equalityExpressions = memberInfos.Select(memberInfo =>
                 EqualityExpr(oneParam, otherParam, memberInfo.Name, getMemberType(memberInfo), getMemberAccessor));
-            var andExpression = equalityExpressions.Aggregate(Expression.AndAlso);
+            var andExpression = equalityExpressions.Aggregate(AndAlso);
 
-            Expression<Func<T, T, bool>> equalsExpression = Expression.Lambda<Func<T, T, bool>>(
+            Expression<Func<T, T, bool>> equalsExpression = Lambda<Func<T, T, bool>>(
                 andExpression,
                 oneParam,
                 otherParam);
@@ -65,13 +66,13 @@ namespace SvSoft.DeepEquals
             {
                 // one == null ? other == null : one.Equals(other)
                 return
-                    Expression.Condition(
-                        Expression.Equal(
+                    Condition(
+                        Equal(
                             getMemberAccessor(oneParam, memberName),
-                            Expression.Constant(null)),
-                        Expression.Equal(
+                            Constant(null)),
+                        Equal(
                             getMemberAccessor(otherParam, memberName),
-                            Expression.Constant(null)),
+                            Constant(null)),
                         TypedEqualsExpr(oneParam, otherParam, memberName, memberType, getMemberAccessor));
             }
 
@@ -81,22 +82,22 @@ namespace SvSoft.DeepEquals
             {
                 // (one == null && other == null) || (one != null && other != null && Enumerable.SequenceEquals(one, other))
                 return
-                    Expression.OrElse(
-                        Expression.AndAlso(
-                            Expression.Equal(
-                                    getMemberAccessor(oneParam, memberName),
-                                    Expression.Constant(null)),
-                            Expression.Equal(
+                    OrElse(
+                        AndAlso(
+                            Equal(
+                                getMemberAccessor(oneParam, memberName),
+                                Constant(null)),
+                            Equal(
                                 getMemberAccessor(otherParam, memberName),
-                                Expression.Constant(null))),
-                        Expression.AndAlso(
-                            Expression.AndAlso(
-                                Expression.NotEqual(
+                                Constant(null))),
+                        AndAlso(
+                            AndAlso(
+                                NotEqual(
                                     getMemberAccessor(oneParam, memberName),
-                                    Expression.Constant(null)),
-                                Expression.NotEqual(
+                                    Constant(null)),
+                                NotEqual(
                                     getMemberAccessor(otherParam, memberName),
-                                    Expression.Constant(null))),
+                                    Constant(null))),
                             SequenceEqualsExpr(oneParam, otherParam, memberName, firstEnumerableType.GetGenericArguments().Single(), getMemberAccessor)));
             }
 
@@ -105,20 +106,20 @@ namespace SvSoft.DeepEquals
 
         private static BinaryExpression EqualOperatorExpr(
             Expression oneParam, Expression otherParam, string fieldName, GetMemberAccessor getMemberAccessor) =>
-            Expression.Equal(
+            Equal(
                 getMemberAccessor(oneParam, fieldName),
                 getMemberAccessor(otherParam, fieldName));
 
         private static MethodCallExpression TypedEqualsExpr(
             Expression oneParam, Expression otherParam, string memberName, Type memberType, GetMemberAccessor getMemberAccessor) =>
-            Expression.Call(
+            Call(
                 getMemberAccessor(oneParam, memberName),
                 Methods.EquatableEquals(memberType),
                 getMemberAccessor(otherParam, memberName));
 
         private static MethodCallExpression ObjectEqualsExpression
             (Expression oneParam, Expression otherParam, string memberName, GetMemberAccessor getMemberAccessor) =>
-            Expression.Call(
+            Call(
                 Methods.ObjectEquals,
                 getMemberAccessor(oneParam, memberName),
                 getMemberAccessor(otherParam, memberName));
@@ -128,11 +129,11 @@ namespace SvSoft.DeepEquals
         {
             var enumerableType = typeof(IEnumerable<>).MakeGenericType(elementType);
 
-            return Expression.Call(
+            return Call(
                 Methods.SequenceEqual(elementType),
-                Expression.Convert(
+                Convert(
                     getMemberAccessor(oneParam, memberName), enumerableType),
-                Expression.Convert(
+                Convert(
                     getMemberAccessor(otherParam, memberName), enumerableType));
         }
     }
